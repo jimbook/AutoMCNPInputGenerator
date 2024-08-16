@@ -198,14 +198,6 @@ class CoordinateSystem():
         else:
             return False
 
-
-
-# class CylindricalCoordinateSystem(CoordinateSystem):
-#     def from_here_to_origin(self, vector:ThreeDVector) -> ThreeDVector:
-#         v = super().from_here_to_origin(vector)
-#
-
-
 class Point(ThreeDVector):
     def __new__(cls, x:float, y:float, z:float, coord: CoordinateSystem = None):
         '''

@@ -58,7 +58,9 @@ class Plane(object):
         D = -np.dot(self.point0, self.normal)
         return A, B, C, D
 
-    def get_plane_in_coord(self,coord: CoordinateSystem):
+    def get_plane_in_coord(self,coord: CoordinateSystem | None):
+        if coord is None:
+            coord = CoordinateSystem()
         p0 = self.point0.get_in_coord(coord)
         p1 = self.point1.get_in_coord(coord)
         p2 = self.point2.get_in_coord(coord)

@@ -6,6 +6,8 @@ import numpy as np
 from scipy import integrate
 from tqdm import tqdm
 
+from MCNPInput import MCNPAutoInput, GeometricModel, Material
+
 
 from multiprocessing import Pool, cpu_count
 # 建立一个边界面接口类
@@ -24,6 +26,13 @@ class DetectionZone(object):
         # 探测范围, cm
         self.Radius = radius # cm
         self.innerDiameter = innerDiameter
+        self._allVolume = None
+
+    @property
+    def all_volume(self) -> float:
+        s = np.pi * (self.Radius * self.Radius - self.innerDiameter * self.innerDiameter)
+        v = s * self.Radius * 2
+        return v
 
 # 描述地层边界类
 class Boundary(metaclass=ABCMeta):
@@ -48,7 +57,12 @@ class Boundary(metaclass=ABCMeta):
         u = self._get_up_limit_line(y)(theta)
         return min(l, u)
 
+    @abstractmethod
     def get_plane_plot_point(self) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        pass
+
+    @abstractmethod
+    def get_MCNP_Surface(self) -> list[tuple[GeometricModel.MCNP_UnionSurface | GeometricModel.MCNP_surface, int]]:
         pass
 
     def __and__(self, other) -> 'Boundary':
@@ -83,6 +97,13 @@ class AnnulusBoundary(Boundary):
 
     def get_plane_plot_point(self) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
         return []
+
+    def get_MCNP_Surface(self) -> list[tuple[GeometricModel.MCNP_UnionSurface | GeometricModel.MCNP_surface, int]]:
+        columnSurface_out = GeometricModel.MCNP_surface('cy', [self.zone.Radius], note="detection boundary")
+        columnSurface_inner = GeometricModel.MCNP_surface('cy', [self.zone.innerDiameter], note="borehole boundary")
+        up_surface = GeometricModel.MCNP_PlaneSurface('py', [self.zone.Radius], note="Stratum detection upper interface")
+        down_surface = GeometricModel.MCNP_PlaneSurface('py', [-self.zone.Radius], note="Stratum detection lower interface")
+        return [(columnSurface_out, -1), (columnSurface_inner, 1), (up_surface, -1), (down_surface, 1)]
 
 class OnePlaneBoundary(Boundary):
     def __init__(self, plane: geometry.Plane, detectorZone:DetectionZone = None):
@@ -181,6 +202,26 @@ class OnePlaneBoundary(Boundary):
             y = (A * x + C * z + D) / -B
         return [(x, y ,z)]
 
+    def get_MCNP_Surface(self) -> tuple[GeometricModel.MCNP_surface, int]:
+        flag_x = np.dot(self.plane.normal, np.array([1, 0, 0]))
+        flag_y = np.dot(self.plane.normal, np.array([0, 1, 0]))
+        flag_z = np.dot(self.plane.normal, np.array([0, 0, 1]))
+        if flag_x != 0:
+            if flag_x > 0:
+                return [(GeometricModel.MCNP_PlaneSurface('p', param=self.plane.analytic_equation_parameter), 1)]
+            else:
+                return [(GeometricModel.MCNP_PlaneSurface('p', param=(-self.plane).analytic_equation_parameter), -1)]
+        elif flag_y != 0:
+            if flag_y > 0:
+                return [(GeometricModel.MCNP_PlaneSurface('p', param=self.plane.analytic_equation_parameter), 1)]
+            else:
+                return [(GeometricModel.MCNP_PlaneSurface('p', param=(-self.plane).analytic_equation_parameter), -1)]
+        else:
+            if flag_z > 0:
+                return [(GeometricModel.MCNP_PlaneSurface('p', param=self.plane.analytic_equation_parameter), 1)]
+            else:
+                return [(GeometricModel.MCNP_PlaneSurface('p', param=(-self.plane).analytic_equation_parameter), -1)]
+
 class UnionAndPlanesBoundary(Boundary):
     def __init__(self, boundary1:Boundary, boundary2:Boundary):
         self.b1 = boundary1
@@ -216,6 +257,12 @@ class UnionAndPlanesBoundary(Boundary):
         l2 = self.b2.get_plane_plot_point()
         l1.extend(l2)
         return l1
+
+    def get_MCNP_Surface(self) -> list[tuple[GeometricModel.MCNP_UnionSurface | GeometricModel.MCNP_surface, int]]:
+        s1 = self.b1.get_MCNP_Surface()
+        s2 = self.b2.get_MCNP_Surface()
+        s1.extend(s2)
+        return s1
 
 class UnionOrPlanesBoundary(Boundary):
     def __init__(self, boundary1:Boundary, boundary2:Boundary):
@@ -253,6 +300,18 @@ class UnionOrPlanesBoundary(Boundary):
         l1.extend(l2)
         return l1
 
+    def get_MCNP_Surface(self) -> list[tuple[GeometricModel.MCNP_UnionSurface | GeometricModel.MCNP_surface, int]]:
+        s1 = self.b1.get_MCNP_Surface()
+        s2 = self.b2.get_MCNP_Surface()
+        surfs = []
+        for i in range(len(s1)):
+            surf_i = s1[i]
+            for j in range(len(s2)):
+                surf_j = s2[j]
+                surf_r = GeometricModel.MCNP_UnionSurface(surf_i, surf_j)
+                surfs.append((surf_r, 1))
+        return surfs
+
 # 圆柱计算体积积分的方程
 def volume_integral_function(rho, theta, y):
     # 由于scipy要求输入的函数依照func(z, y, x)，因此，对应改变参数排列
@@ -273,7 +332,7 @@ class stratum(object):
         :param detectionZone: 探测区域
         '''
         # 将探测边界加入
-        self.boundary = boundary & AnnulusBoundary(detectionZone)
+        self.boundary:Boundary = boundary & AnnulusBoundary(detectionZone)
         self.api = API
         self.dZone = detectionZone
         # self._plot_model()
@@ -513,3 +572,4 @@ class stratum(object):
         for x, y, z in co_list:
             ax.plot_surface(x, y, z)
         ax.axis('equal')
+

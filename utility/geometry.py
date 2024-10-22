@@ -5,20 +5,27 @@ import numpy as np
 from .coordinate import *
 
 class Plane(object):
-    def __init__(self, point0: Point, point1: Point, point2: Point):
-        self.coord = point0.coord
-        self.point0 = point0
-        self.point1 = point1.get_in_coord(coord=self.coord)
-        self.point2 = point2.get_in_coord(coord=self.coord)
+    def __init__(self, point0: Point, point1: Point, point2: Point, coord:CoordinateSystem = CoordinateSystem()):
+        self.coord = coord
+        with coord:
+            # 同一坐标系
+            self.point0 = point0.get_point_in_coord()
+            self.point1 = point1.get_point_in_coord()
+            self.point2 = point2.get_point_in_coord()
+
         self.normal = self._normal()
-        self.analytic_equation_parameter = self._analytic_equation_parameter()
+        self._analytic_equation_parameter = None
 
     def _normal(self):
         v1 = self.point1 - self.point0
         v2 = self.point2 - self.point1
-        normal = np.cross(v1, v2)
-        n = normal / np.linalg.norm(normal)
+        _normal = np.cross(v1, v2)
+        n = _normal / np.linalg.norm(_normal)
         return n # 法向量
+
+    @property
+    def coordinate(self):
+        return self._coord
 
     def isUnderIt(self, point:Point) -> bool:
         '''
@@ -26,6 +33,7 @@ class Plane(object):
         :param point:
         :return:
         '''
+        p_c = point.coord
         if point.coord == self.coord:
             v = point - self.point0
             if np.isclose(np.linalg.norm(v), 0):
@@ -38,35 +46,36 @@ class Plane(object):
             else:
                 return False
         else:
-            return self.get_plane_in_coord(point.coord).isUnderIt(point)
+            return self.isUnderIt(point.get_point_in_coord(self.coord))
 
-    # def isInIt(self, point:Point) -> bool:
-    #     '''
-    #     检查点是否在平面上
-    #     :param point:
-    #     :return:
-    #     '''
-
-    def _analytic_equation_parameter(self) -> tuple[float]:
+    @property
+    def analytic_equation_parameter(self) -> tuple[float, float, float, float]:
         '''
         给出平面解析方程的四个参数，方程形式为Ax+By+Cz+D = 0
         :return: A, B, C, D
         '''
-        A = self.normal[0]
-        B = self.normal[1]
-        C = self.normal[2]
-        D = -np.dot(self.point0, self.normal)
-        return A, B, C, D
+
+        if self._analytic_equation_parameter is None:
+            A:float = self.normal[0]
+            B:float = self.normal[1]
+            C:float = self.normal[2]
+            D:float = -np.dot(self.point0, self.normal)
+            self._analytic_equation_parameter = (A, B, C, D)
+        return self._analytic_equation_parameter
 
     def get_plane_in_coord(self,coord: CoordinateSystem | None):
         if coord is None:
             coord = CoordinateSystem()
-        p0 = self.point0.get_in_coord(coord)
-        p1 = self.point1.get_in_coord(coord)
-        p2 = self.point2.get_in_coord(coord)
-        return Plane(p0, p1, p2)
+        return Plane(self.point0, self.point1, self.point2, coord)
 
-    def integral_boundary(self,y: float, theta: float, coord:CoordinateSystem, upper:bool):
+    def integral_boundary(self,y: float, theta: float, coord:CoordinateSystem):
+        '''
+        平面的积分边界，只用于后续的体积计算，无通用用途
+        :param y:
+        :param theta:
+        :param coord:
+        :return:
+        '''
         A, B, C, D = self.analytic_equation_parameter
         # 如果平面垂直于y轴
         if B != 0 and A == 0 and C == 0:
@@ -101,8 +110,9 @@ class Plane(object):
     def __neg__(self):
         '''
         magic method to get reverse normal plane
+        获取一个法向量相反的平面
         :return:
         '''
-        r = Plane(self.point2, self.point1, self.point0)
+        r = Plane(self.point2, self.point1, self.point0, self.coord)
         return r
 

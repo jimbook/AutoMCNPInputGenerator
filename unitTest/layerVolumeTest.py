@@ -4,6 +4,7 @@ from utility.stratumModel import *
 from utility import coordinate, geometry
 import unittest
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
 
 outer_diameter = 80
 inner_diameter = 10
@@ -21,7 +22,7 @@ def process_function_one_plane_one_boundary_centre_plane(argTulpe: tuple[float, 
     plane_ij = geometry.Plane(p1, p2, p3)
 
     boundary_ij = OnePlaneBoundary(plane_ij, dZone)
-    s_ij = stratum(boundary_ij, 1., dZone)
+    s_ij = Stratum(boundary_ij, 1., dZone)
     return s_ij.volume
 
 def process_function_one_plane_one_boundary_move_plane(argTulpe: tuple[float, float]):
@@ -46,7 +47,7 @@ def process_function_one_plane_one_boundary_move_plane(argTulpe: tuple[float, fl
         plane_ij = geometry.Plane(p1, p2, p3)
 
         boundary_ij = OnePlaneBoundary(plane_ij, dZone)
-        s_ij = stratum(boundary_ij, 1., dZone)
+        s_ij = Stratum(boundary_ij, 1., dZone)
         r.append(s_ij.volume)
     if len(r) == 0:
         return 0.
@@ -98,7 +99,7 @@ def process_function_one_plane_two_boundary_move_plane(argTulpe:tuple[float, flo
 
 
                     boundary = UnionAndPlanesBoundary(boundary_1, boundary_2)
-                    s = stratum(boundary, 1., dZone)
+                    s = Stratum(boundary, 1., dZone)
                     if s.volume != areaOfCircle * abs(y_1 - y_2):
                         return -1
         return 1
@@ -111,7 +112,7 @@ class StratumVolumeTestCase(unittest.TestCase):
                                         coordinate.Point(-outer_diameter,0,  -1))
         print("normal:", plane_0.normal)
         downBoundary_0 = OnePlaneBoundary(plane_0)
-        s_0 = stratum(downBoundary_0, 1., None)
+        s_0 = Stratum(downBoundary_0, 1., None)
         # 通过体积公式计算体积
         v_0 = outer_diameter * areaOfCircle
         self.assertAlmostEqual(s_0.volume, v_0)

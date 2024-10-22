@@ -29,9 +29,9 @@ class TestCoordinate(unittest.TestCase):
         p_y = Point(0, 1, 0)
         p_z = Point(0, 0, 1.)
         ## 90度旋转
-        x_90 = coordinateSystem.X_rotation_matrix(90)
-        y_90 = coordinateSystem.Y_rotation_matrix(90)
-        z_90 = coordinateSystem.Z_rotation_matrix(90)
+        x_90 = coordinateSystem.x_rotation_matrix(90)
+        y_90 = coordinateSystem.y_rotation_matrix(90)
+        z_90 = coordinateSystem.z_rotation_matrix(90)
         answer = [
             # x_90
             np.array([1, 0, 0 ,1]),
@@ -53,9 +53,9 @@ class TestCoordinate(unittest.TestCase):
                 self.assertEqualVector(p_result, answer[answerIdx])
                 answerIdx += 1
         ## 180度旋转
-        x_180 = coordinateSystem.X_rotation_matrix(180)
-        y_180 = coordinateSystem.Y_rotation_matrix(180)
-        z_180 = coordinateSystem.Z_rotation_matrix(180)
+        x_180 = coordinateSystem.x_rotation_matrix(180)
+        y_180 = coordinateSystem.y_rotation_matrix(180)
+        z_180 = coordinateSystem.z_rotation_matrix(180)
         answer = [
             # x_180
             np.array([1, 0, 0, 1]),
@@ -77,9 +77,9 @@ class TestCoordinate(unittest.TestCase):
                 self.assertEqualVector(p_result, answer[answerIdx])
                 answerIdx += 1
         ##45度旋转
-        x_45 = coordinateSystem.X_rotation_matrix(45)
-        y_45 = coordinateSystem.Y_rotation_matrix(45)
-        z_45 = coordinateSystem.Z_rotation_matrix(45)
+        x_45 = coordinateSystem.x_rotation_matrix(45)
+        y_45 = coordinateSystem.y_rotation_matrix(45)
+        z_45 = coordinateSystem.z_rotation_matrix(45)
         answer = [
             # x_45
             np.array([1, 0, 0, 1]),
@@ -277,7 +277,7 @@ class TestCoordinate(unittest.TestCase):
         answer = list(map(lambda p: p - O_c_0, pointList_original))
         answerIdx = 0
         for p in pointList_original:
-            p_c_0 = Point.get_point_in_coord(p, c_0)
+            p_c_0 = Point._get_point_in_coord(p, c_0)
             self.assertEqualVector(p_c_0, answer[answerIdx])
             answerIdx += 1
 
@@ -286,7 +286,7 @@ class TestCoordinate(unittest.TestCase):
         answer = list(map(lambda p: p - O_c_1, pointList_original))
         answerIdx = 0
         for v in pointList_original:
-            p_c_1 = Point.get_point_in_coord(v, c_1)
+            p_c_1 = Point._get_point_in_coord(v, c_1)
             self.assertEqualVector(p_c_1, answer[answerIdx])
             answerIdx += 1
 
@@ -324,9 +324,9 @@ class TestCoordinate(unittest.TestCase):
         ]
         answerIdx = 0
         for p in pointList_original:
-            p_c_x90 = Point.get_point_in_coord(p, c_x90)
-            p_c_y90 = Point.get_point_in_coord(p, c_y90)
-            p_c_z90 = Point.get_point_in_coord(p, c_z90)
+            p_c_x90 = Point._get_point_in_coord(p, c_x90)
+            p_c_y90 = Point._get_point_in_coord(p, c_y90)
+            p_c_z90 = Point._get_point_in_coord(p, c_z90)
             self.assertEqualVector(p_c_x90, answer_x90[answerIdx])
             self.assertEqualVector(p_c_y90, answer_y90[answerIdx])
             self.assertEqualVector(p_c_z90, answer_z90[answerIdx])
@@ -359,9 +359,9 @@ class TestCoordinate(unittest.TestCase):
         ]
         answerIdx = 0
         for p in pointList_original[:-1]:
-            p_c_x45 = Point.get_point_in_coord(p, c_x45)
-            p_c_y45 = Point.get_point_in_coord(p, c_y45)
-            p_c_z45 = Point.get_point_in_coord(p, c_z45)
+            p_c_x45 = Point._get_point_in_coord(p, c_x45)
+            p_c_y45 = Point._get_point_in_coord(p, c_y45)
+            p_c_z45 = Point._get_point_in_coord(p, c_z45)
             print(answerIdx)
             self.assertEqualVector(p_c_x45, answer_x45[answerIdx])
             self.assertEqualVector(p_c_y45, answer_y45[answerIdx])
@@ -380,7 +380,7 @@ class TestCoordinate(unittest.TestCase):
         ]
         answerIdx = 0
         for v in pointList_original:
-            p_c_v1 = Point.get_point_in_coord(v, c_v120)
+            p_c_v1 = Point._get_point_in_coord(v, c_v120)
             self.assertEqualVector(p_c_v1, answer[answerIdx])
             answerIdx += 1
 
@@ -398,7 +398,7 @@ class TestCoordinate(unittest.TestCase):
         ]
         answerIdx = 0
         for v in pointList_original:
-            p_c_2x90 = Point.get_point_in_coord(v, c_2_x90)
+            p_c_2x90 = Point._get_point_in_coord(v, c_2_x90)
             self.assertEqualVector(p_c_2x90, answer_x90[answerIdx])
             answerIdx += 1
         print("end")

@@ -1,10 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from collections.abc import Iterable
 import scipy.optimize as opt
-import scienceplots
-import latex
 plt.style.use('science')
 
 #最小曲率法2维
@@ -23,7 +20,6 @@ def minimum_curvature_method(dm:float, I_1:float, I_2:float):
     d_Vert = (np.sin(I_2) - np.sin(I_1)) * R
     d_Hori = (np.cos(I_1) - np.cos(I_2)) * R
     return d_Vert, d_Hori
-
 
 #直接连接的方法求解井斜
 def direct_connection_solution(Vert:float, Hori:float):
@@ -168,8 +164,17 @@ def plot_two_methods_trajectory(data:pd.DataFrame):
 
     plt.show()
 
+#井眼轨迹类
+
+
+
 class Trackofwell():
     def __init__(self, hd_Path:str, vd_Path:str):
+        '''
+        从对应的文件读取井眼轨迹
+        :param hd_Path:
+        :param vd_Path:
+        '''
         hd = np.loadtxt(hd_Path,float, skiprows=2)
         vd = np.loadtxt(vd_Path, float, skiprows=2)
         self.startDepth = hd.shape[0] - 1

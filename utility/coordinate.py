@@ -1,3 +1,4 @@
+import threading
 from typing import Any
 
 import numpy as np
@@ -6,7 +7,7 @@ from copy import deepcopy
 #just to get a specific class
 _tdv = np.array([0.,0.,0.])
 
-#将numpy限定为三维向量
+#将numpy限定为三维向量, 这个类是没有坐标系限定的
 class ThreeDVector(np.ndarray):
     def __new__(cls, x: float, y: float, z: float):
         obj = np.asarray([x, y, z]).view(cls)
@@ -38,6 +39,42 @@ def angle_to_radian(angle: float) -> float:
 def radian_to_angle(radian: float) -> float:
     return radian * 180. / np.pi
 
+# 一个单例，作为坐标系上下文管理器
+class _ContextManagerOfCoordinateSystem(object):
+    _instance_lock = threading.Lock()
+
+    def init(self):
+        self._coordinateStack = []
+
+    def __new__(cls, *args, **kwargs):
+        if not hasattr(_ContextManagerOfCoordinateSystem, '_instance'):
+            with _ContextManagerOfCoordinateSystem._instance_lock:
+                if not hasattr(_ContextManagerOfCoordinateSystem, "_instance"):
+                    _ContextManagerOfCoordinateSystem._instance = object.__new__(cls)
+                    _ContextManagerOfCoordinateSystem._instance.init()
+        return _ContextManagerOfCoordinateSystem._instance
+
+    def __getitem__(self, item):
+        return self._coordinateStack[item]
+
+    def __len__(self):
+        return len(self._coordinateStack)
+
+    def push(self, coordinate:'CoordinateSystem'):
+        self._coordinateStack.append(coordinate)
+
+    def pop(self) -> 'CoordinateSystem':
+        if len(self) == 0:
+            return None
+        else:
+            return self._coordinateStack.pop()
+
+    def now_coordinate(self) -> 'CoordinateSystem':
+        if len(self._coordinateStack) == 0:
+            return CoordinateSystem()
+        else:
+            return self._coordinateStack[-1]
+
 #定义坐标系
 class CoordinateSystem():
     def __init__(self):
@@ -58,7 +95,7 @@ class CoordinateSystem():
         return tmp
 
     @staticmethod
-    def X_rotation_matrix(theta:float) -> np.array:
+    def x_rotation_matrix(theta:float) -> np.array:
         '''
 
         :param theta: 角度，逆时针为正
@@ -73,7 +110,7 @@ class CoordinateSystem():
         return tmp
 
     @staticmethod
-    def Y_rotation_matrix(theta:float) -> np.array:
+    def y_rotation_matrix(theta:float) -> np.array:
         '''
 
         :param theta: 角度，逆时针为正
@@ -88,7 +125,7 @@ class CoordinateSystem():
         return tmp
 
     @staticmethod
-    def Z_rotation_matrix(theta:float) -> np.array:
+    def z_rotation_matrix(theta:float) -> np.array:
         '''
 
         :param theta: 角度，逆时针为正
@@ -118,20 +155,20 @@ class CoordinateSystem():
             phi = 90
         else:
             phi = np.arctan((np.sqrt(v[0]*v[0] + v[1]*v[1]) / v[2])) / np.pi * 180
-        matrixD = CoordinateSystem.Z_rotation_matrix(theta)
-        matrixD = np.dot(CoordinateSystem.Y_rotation_matrix(phi), matrixD)
-        matrixD = np.dot(CoordinateSystem.Z_rotation_matrix(delta), matrixD)
-        matrixD = np.dot(CoordinateSystem.Y_rotation_matrix(-phi), matrixD)
-        matrixD = np.dot(CoordinateSystem.Z_rotation_matrix(-theta), matrixD)
+        matrixD = CoordinateSystem.z_rotation_matrix(theta)
+        matrixD = np.dot(CoordinateSystem.y_rotation_matrix(phi), matrixD)
+        matrixD = np.dot(CoordinateSystem.z_rotation_matrix(delta), matrixD)
+        matrixD = np.dot(CoordinateSystem.y_rotation_matrix(-phi), matrixD)
+        matrixD = np.dot(CoordinateSystem.z_rotation_matrix(-theta), matrixD)
         return matrixD
 
     @property
-    def transformMatrix(self):
+    def transform_matrix(self):
         return np.dot(self.rotationMatrix, self.translationMatrix)
 
     @property
-    def inverseTransformMatrix(self):
-        return np.linalg.inv(self.transformMatrix)
+    def inverse_transform_matrix(self):
+        return np.linalg.inv(self.transform_matrix)
 
     def from_origin_to_here(self, vector:ThreeDVector) -> ThreeDVector:
         '''
@@ -139,7 +176,7 @@ class CoordinateSystem():
         :param vector: 原始坐标系下的三维向量
         :return: 当前坐标系下的三维向量
         '''
-        tmp_v = np.dot(self.transformMatrix, vector.homogeneous_vector())
+        tmp_v = np.dot(self.transform_matrix, vector.homogeneous_vector())
         if not self.right_handed:
             tmp_v[2] = -tmp_v[2]
         return ThreeDVector(*tmp_v[:3])
@@ -152,16 +189,8 @@ class CoordinateSystem():
         '''
         if not self.right_handed:
             vector[2] = -vector[2]
-        tmp_v = np.dot(self.inverseTransformMatrix, vector.homogeneous_vector())
+        tmp_v = np.dot(self.inverse_transform_matrix, vector.homogeneous_vector())
         return ThreeDVector(*tmp_v[:3])
-    #
-    # def get_point_in_here(self, point:'Point') -> 'Point':
-    #     if point.coord is None:
-    #         new_vector = self.from_here_to_origin(point)
-    #     else:
-    #         original_vector = point.coord.from_here_to_origin(point)
-    #         new_vector = self.from_here_to_origin(original_vector)
-    #     return Point(*new_vector, coord=self)
 
     def move_to(self,v:ThreeDVector):
         '''
@@ -184,7 +213,7 @@ class CoordinateSystem():
         new_coordinate.rotationMatrix = np.dot(new_coordinate.rotate_matrix(v, delta), new_coordinate.rotationMatrix)
         return new_coordinate
 
-    def switchToOtherHandedSystem(self, right_handed:bool = True):
+    def switch_to_other_handed_system(self, right_handed:bool = True):
         new_coordinate = deepcopy(self)
         new_coordinate.right_handed = right_handed
         return new_coordinate
@@ -192,11 +221,21 @@ class CoordinateSystem():
     def __eq__(self, other):
         if other is None:
             other = CoordinateSystem()
-        if np.array_equal(self.translationMatrix, other.translationMatrix) and \
-                np.array_equal(self.rotationMatrix, other.rotationMatrix):
+        t_e = np.array_equal(self.translationMatrix, other.translationMatrix)
+        r_e = np.array_equal(self.rotationMatrix, other.rotationMatrix)
+        if t_e and r_e:
             return True
         else:
             return False
+
+    def __enter__(self) -> 'CoordinateSystem':
+        coordManager = _ContextManagerOfCoordinateSystem()
+        coordManager.push(self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        coordManager = _ContextManagerOfCoordinateSystem()
+        coordManager.pop()
 
 class Point(ThreeDVector):
     def __new__(cls, x:float, y:float, z:float, coord: CoordinateSystem = None):
@@ -205,7 +244,8 @@ class Point(ThreeDVector):
         :param coord: 坐标基于的坐标系，如果为None则代表是原始坐标系下的坐标
         '''
         j = super().__new__(cls,x,y,z)
-        j.coord = coord
+        if coord is None:
+            j.coord = _ContextManagerOfCoordinateSystem().now_coordinate()
         return j
 
     def __init__(self, x:float, y:float, z:float, coord: CoordinateSystem = None):
@@ -221,7 +261,7 @@ class Point(ThreeDVector):
         自身的坐标是否是基于原始坐标系
         :return: true-基于原始坐标系; false-基于其他坐标系
         '''
-        if self.coord is None:
+        if self.coord == CoordinateSystem():
             return True
         else:
             return False
@@ -238,7 +278,7 @@ class Point(ThreeDVector):
             return Point(*t)
 
     @classmethod
-    def get_point_in_coord(cls, point:'Point', coord:CoordinateSystem) -> 'Point':
+    def _get_point_in_coord(cls, point: 'Point', coord:CoordinateSystem) -> 'Point':
         '''
         获取对应点在对应坐标系下的坐标
         :param point:
@@ -253,8 +293,14 @@ class Point(ThreeDVector):
             t = coord.from_origin_to_here(point)
         return Point(*t, coord=coord)
 
-    def get_in_coord(self, coord:CoordinateSystem) -> 'Point':
-        return Point.get_point_in_coord(self,coord)
+    def get_point_in_coord(self, coord:CoordinateSystem = None) -> 'Point':
+        if coord is None:
+            coord = _ContextManagerOfCoordinateSystem().now_coordinate()
+        return Point._get_point_in_coord(self, coord)
+
+    @property
+    def coordinate(self) -> CoordinateSystem:
+        return self.coord
 
 def point_equal(pointA:Point, pointB:Point) -> bool:
     if pointA.is_in_origin():
@@ -270,7 +316,7 @@ def point_equal(pointA:Point, pointB:Point) -> bool:
 
 if __name__ == '__main__':
     print(Point(1.,1.,1.))
-    print(CoordinateSystem.X_rotation_matrix(30/180. * np.pi))
+    print(CoordinateSystem.x_rotation_matrix(30 / 180. * np.pi))
 
 
 

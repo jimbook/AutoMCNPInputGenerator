@@ -8,11 +8,11 @@ class MCNP_CardsPool(object):
         self.CellCards:list[GeometricModel.MCNP_cell] = []
         self.MaterialCards:list[Material.MCNP_material] = []
         self.TransformationCards:list[GeometricModel.MCNP_transformation] = []
-        self.SourceCard:SourceDefine.MCNP_souceCards = SourceDefine.MCNP_souceCards()
+        self.SourceCard:SourceDefine.MCNP_SourceCards = SourceDefine.MCNP_SourceCards()
         self.TallyCard = SourceDefine.MCNP_tallyCards()
 
         self.sourceCells:list[GeometricModel.MCNP_cell] = []
-        self.nps = pow(2, 32)
+
 
     def add_transformation(self, tr:GeometricModel.MCNP_transformation) -> int:
         '''
@@ -72,14 +72,22 @@ class MCNP_CardsPool(object):
                 self.add_material(cell.material)
         if cell.detector:
             self.TallyCard.add_detector(cell)
-        if cell.api != 0:
+        if cell.doseStand != 0:
             self.sourceCells.append(cell)
 
     def _total_api(self) -> float:
         _a = 0.
         for cell in self.sourceCells:
-            _a += cell.api
+            _a += cell.doseStand
         return _a
+
+    @property
+    def nps(self) -> int:
+        return self.TallyCard.cut_nps
+
+    @nps.setter
+    def nps(self, number:int):
+        self.TallyCard.cut_nps = number
 
     def __str__(self):
         cell_head = "vertical well of Azimuth gamma\nC ==============cell card================\n"
@@ -89,9 +97,20 @@ class MCNP_CardsPool(object):
         source_head = "C ==============source card===================\n"
         tally_head = "C ==============tally card=================\n"
 
+        doseDistribute_cellIndex = SourceDefine.MCNP_SourceInformation()
+        doseDistribute_cellIndex.option = "L"
+        doseDistribute_distribution = SourceDefine.MCNP_NormalSourceProbabilty()
+
+
+
         cell_output = cell_head
         for cell in self.CellCards:
             cell_output += str(cell)
+            if cell.doseStand > 0:
+                doseDistribute_cellIndex.data.append(cell.index)
+                doseDistribute_distribution.data.append(cell.doseStand)
+            if cell.detector:
+                self.TallyCard.add_detector(cell)
         cell_output = AuxiliaryFunction.line_split(cell_output)
 
         surf_output = surf_head
@@ -106,6 +125,15 @@ class MCNP_CardsPool(object):
         for tr in self.TransformationCards:
             data_output += str(tr)
         data_output += source_head
+        # 添加imp
+        self.SourceCard.imp = '1 {:d}r 0'.format(len(self.CellCards) - 2)
+        doseDistribute = SourceDefine.MCNP_Distribution_discrete(doseDistribute_cellIndex, doseDistribute_distribution)
+        if ('cell' not in self.SourceCard.sdef.argument.keys() and
+                "CELL" not in self.SourceCard.sdef.argument.keys()):
+            self.SourceCard['cell'] = doseDistribute
+
+
+
         data_output += str(self.SourceCard)
         data_output += tally_head
         data_output += str(self.TallyCard)
@@ -184,7 +212,6 @@ class CellsPackage(metaclass=ABCMeta):
             parent.add_child(self)
 
         self.create_cells()
-
 
     @abstractmethod
     def create_cells(self):

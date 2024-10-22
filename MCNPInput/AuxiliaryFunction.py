@@ -41,6 +41,13 @@ def getZTran(theta:float):
                      [0, 0, 1]])
 
 def transformationMatrix(x_angle:float = 0, y_angle:float = 0, z_angle:float = 0):
+    '''
+    获取一个旋转矩阵
+    :param x_angle:
+    :param y_angle:
+    :param z_angle:
+    :return:
+    '''
     xy = np.dot(getXTran(x_angle), getYTran(y_angle))
     xyz = np.dot(xy, getZTran(z_angle))
     return xyz

@@ -1,4 +1,4 @@
-from MCNPInput import Material
+from MCNPInput import Material, SourceDefine
 import numpy as np
 import re
 from abc import abstractmethod, ABCMeta
@@ -12,7 +12,6 @@ class MCNP_GeoObject(object):
 
     def str_index(self) -> str:
         return str(self.index)
-
 
 class MCNP_transformation(MCNP_GeoObject):
     def __init__(self, matrix:np.array, x:float = 0, y:float = 0, z:float = 0):
@@ -29,7 +28,7 @@ class MCNP_transformation(MCNP_GeoObject):
         if matrix.shape != (3, 3):
             raise AttributeError("matrix.shape should be (3, 3)")
         self.matrix = matrix
-        self.point = [x, y, z]
+        self.point = np.array([x, y, z])
 
     def implyToMatrix(self, vector:np.array):
         '''
@@ -57,7 +56,7 @@ class MCNP_transformation(MCNP_GeoObject):
 
     def __eq__(self, other):
         if isinstance(other, type(self)):
-            if np.allclose(self.matrix, other.matrix) and self.point == other.point:
+            if np.allclose(self.matrix, other.matrix) and np.allclose(self.point,other.point):
                 return True
         return False
 
@@ -65,22 +64,19 @@ class MCNP_transformation(MCNP_GeoObject):
         return hash(tuple(self.params))
 
     def __add__(self, other):
-        if isinstance(other,self):
-            r = []
-            for i in range(3):
-                r.append(self.params[i] + other.params[i])
-            for i in range(3,6):
-                r.append(self.params[i])
-            return MCNP_transformation(*r)
+        if isinstance(other, type(self)):
+            _matrix = np.dot(self.matrix, other.matrix)
+            _point = self.point + other.point
+            return MCNP_transformation(_matrix, *_point)
+        elif other is None:
+            return self
 
     def __sub__(self, other):
-        if isinstance(other,self):
-            r = []
-            for i in range(3):
-                r.append(self.params[i] - other.params[i])
-            for i in range(3,6):
-                r.append(self.params[i])
-            return MCNP_transformation(*r)
+        if isinstance(other,type(self)):
+            _otherInvMatrix = np.linalg.inv(other.matrix)
+            _matrix = np.dot(self.matrix, _otherInvMatrix)
+            _point = self.point - other.point
+            return MCNP_transformation(_matrix, *_point)
 
 class MCNP_surface(MCNP_GeoObject):
     def __init__(self, shape:str, param:list, note:str="", transformation:MCNP_transformation = None):
@@ -99,7 +95,15 @@ class MCNP_surface(MCNP_GeoObject):
         self.transformation = transformation
 
     def __str__(self):
-        p = " ".join(map(str, self.params))
+        def tmpFunc(i):
+            _ans = i
+            if isinstance(i, float):
+                _ans = round(i, 4)
+                if _ans > 10000:
+                    _ans = "{:.4E}".format(_ans)
+
+            return str(_ans)
+        p = " ".join(map(tmpFunc, self.params))
         if self.transformation is None:
             ss = "{} {} {} ${}\n".format(self.index, self.shape, p, self.note) if self.note != '' else "{} {} {}\n".format(self.index, self.shape, p)
         else:
@@ -211,7 +215,7 @@ class MCNP_UnionSurface(MCNP_GeoObject):
         return r
 
 class MCNP_cell():
-    def __init__(self, material:Material.MCNP_material, density:float, note:str = "", detector = False, api = 0):
+    def __init__(self, material:Material.MCNP_material, density:float, note:str = "", detector = False, doseStand = 0):
         '''
         栅元卡
         19  1  -1. 24 -25 -26 (-1:2:4)     $井眼流体
@@ -229,7 +233,8 @@ class MCNP_cell():
         self.excludeCell:list[MCNP_cell] = []
         self.index = -1
         self.detector = detector
-        self.api = api
+        self.doseStand = doseStand
+        self.sourceDefine = SourceDefine.MCNP_SourceCards()
 
     def __str__(self):
         sfi = []
@@ -313,9 +318,6 @@ class MCNP_cell():
             return MCNP_UnionSurface(*U_surfaces).str_index()
         else:
             return "#{:d}".format(self.index)
-
-    # def surface_exclude(self) -> list[(MCNP_surface, int)]:
-    #
 
     def get_surfs(self) -> list[MCNP_surface]:
         '''
@@ -421,7 +423,7 @@ def createCellFromString(input:str, surfaceList:list[MCNP_surface], materialList
                 c.addSurface(surfaceList[-idx - 1], -1)
     return c
 
-def readCellCardFromString(input:str,surfaceList:list[MCNP_surface], materialList:list[Material.MCNP_material]):
+def readCellCardFromString(input:str,surfaceList:list[MCNP_surface], materialList:list[Material.MCNP_material]) -> list[MCNP_cell]:
     cellList = []
     lines = input.split('\n')
     for i in range(len(lines)):
@@ -430,6 +432,3 @@ def readCellCardFromString(input:str,surfaceList:list[MCNP_surface], materialLis
             c = createCellFromString(line, surfaceList, materialList, cellList)
             cellList.append(c)
     return cellList
-
-
-

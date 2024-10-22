@@ -2,50 +2,46 @@ import numpy as np
 from abc import abstractmethod, ABCMeta
 import matplotlib.pyplot as plt
 import re
+import logging
+logger = logging.getLogger("myapp")
 
 class MCNP_SourceDefinition(object):
     def __init__(self, **kwargs):
-        # self._cell = None # 体元
-        # self._par = None    # 粒子类型
-        # self._energy = None # 粒子动能
-        # self._time = None # 粒子初始时间
-        # self._direction = None # 粒子方向与vec向量的夹角
-        # self._vector = None # 粒子方向的vec
-        # self._nrm = None #
+        '''
+        源定义描述
+        :param kwargs:
+        # cell = None # 体元
+        # par = None    # 粒子类型
+        # erg = None # 粒子动能
+        # tme = None # 粒子初始时间
+        # dir = None # 粒子方向与vec向量的夹角
+        # vec = None # 粒子方向的vec
+        # nrm = None #
         # # 粒子初始位置采样范围
-        # self._pos = None  # 参考基准点
-        # self._rad = None # 初始位置到POS（基准点）或AXS（基准轴）的距离
-        # self._ext = None # 初始位置沿着AXS轴相对POS的距离
-        # self._X = None
-        # self._Y = None
-        # self._Z = None
-        # self._CCC = None
-        # self._ARA = None
-        # self._weight = None
-        # self._transformation = None
-        # self._efficiency = None
-        # # 宇宙射线
-        # self._dat = None
-        # self._loc = None
-        # self._bem = None
-        # self._bar = None
+        # pos = None  # 参考基准点
+        # rad = None # 初始位置到POS（基准点）或AXS（基准轴）的距离
+        # ext = None # 初始位置沿着AXS轴相对POS的距离
+        # X = None
+        # Y = None
+        # Z = None
+        '''
         self.argument = kwargs
 
     def __str__(self):
         sdef_ = "sdef "
-        d_ = []
+        d_idx = 1
+        d_str = ''
         for key, value in self.argument.items():
-            if isinstance(value, MCNP_Distribution):
-                d_.append(value)
-                value.index = len(d_)
+            if isinstance(value, MCNP_Distribution) or isinstance(value, MCNP_F_Distribution):
+                value.index = d_idx
+                d_str += str(value)
+                d_idx += value.count
                 sdef_ += "{}={} ".format(key, value.name)
             else:
                 sdef_ += "{}={} ".format(key, value)
         sdef_ += "\n"
-        for d in d_:
-            sdef_ += str(d)
+        sdef_ += d_str
         return sdef_
-
 
     def __setitem__(self, key, value):
         self.argument[key] = value
@@ -55,6 +51,10 @@ class MCNP_SourceDefinition(object):
 
 class MCNP_SourceInformation(object):
     def __init__(self):
+        '''
+        mcnp中si的描述
+        对应distribution的x部分
+        '''
         self.data = []
         self.option = ''
         self.index = -1
@@ -72,6 +72,10 @@ class MCNP_SourceInformation(object):
 
 class MCNP_SourceProbabilty(object):
     def __init__(self):
+        '''
+        mcnp中sp的描述
+        对应distribution的y部分
+        '''
         self.data = []
         self.option = ''
         self.index = -1
@@ -87,15 +91,42 @@ class MCNP_SourceProbabilty(object):
         s = ("SP{:d} {} {}\n").format(self.index, self.option, data)
         return s
 
+class MCNP_NormalSourceProbabilty(MCNP_SourceProbabilty):
+    '''
+    会自动归一化的分布值描述
+    '''
+    def __str__(self):
+        data = np.array(list(map(float,self.data)))
+        _data_sum = np.sum(data)
+        data = data / _data_sum
+        data_str = " ".join(list(map("{:.4f}".format,data)))
+        s = ("SP{:d} {} {}\n").format(self.index, self.option, data_str)
+        return s
+
 class MCNP_Distribution(metaclass=ABCMeta):
-    def __init__(self, si: MCNP_SourceInformation, sp: MCNP_SourceInformation):
+    def __init__(self, si: MCNP_SourceInformation, sp: MCNP_SourceProbabilty):
+        '''
+        mcnp中的分布描述
+        :param si: x
+        :param sp: y
+        '''
         self.si = si
         self.sp = sp
-        self.index = -1
+        self._index = -1
 
     def __str__(self):
+        self.si.index = self.index
+        self.sp.index = self.index
         s = '{}{}'.format(self.si, self.sp)
         return s
+
+    @property
+    def index(self):
+        return self._index
+
+    @index.setter
+    def index(self, value:int):
+        self._index = value
 
     @property
     def name(self):
@@ -110,18 +141,68 @@ class MCNP_Distribution(metaclass=ABCMeta):
             return np.array(list(map(f, self.si.data)))
         else:
             return np.array(self.sp.data)
+    @property
+    def count(self) -> int:
+        return 1
 
 
     @abstractmethod
     def plot(self):
         pass
 
+class MCNP_F_Distribution(object):
+    def __init__(self, targetName:str):
+        '''
+        mcnp中条件概率分布
+        :param targetName:使用的条件分布名
+        '''
+        self.target = targetName
+        self.DistributionSet:list[MCNP_Distribution] = []
+        self._index = -1
+
+    def __str__(self):
+        subIdx = ''
+        s1 = "DS{:d} S {}\n"
+        subStr = ''
+        for i in self.DistributionSet:
+            subStr += str(i)
+            subIdx += str(i.index) + ' '
+        s1 = s1.format(self.index, subIdx.strip())
+        return s1 + subStr
+
+
+    @property
+    def index(self):
+        return self._index
+
+    @index.setter
+    def index(self, value:int):
+        self._index = value
+        for i in range(len(self.DistributionSet)):
+            d = self.DistributionSet[i]
+            d.index = i + self.index + 1
+
+    @property
+    def name(self):
+        return "F{} d{:d}".format(self.target,self.index)
+
+    @property
+    def count(self) -> int:
+        return 1+len(self.DistributionSet)
+
+    def add_distribution(self, distribution: MCNP_Distribution):
+        self.DistributionSet.append(distribution)
+
+    def plot(self):
+        for i in self.DistributionSet:
+            i.plot()
+
+
+
 class MCNP_Distribution_histogram(MCNP_Distribution):
-    # def __init__(self, si: MCNP_SourceInformation, sp: MCNP_SourceInformation):
-    #     if len(si) - len(sp) != 1:
-    #         raise AttributeError("len(si) - len(sp) != 1")
-    #     else:
-    #         super().__init__(si, sp)
+    '''
+    MCNP 直方图分布
+    '''
 
     def plot(self):
         x = np.linspace(self.si.data[0], self.si.data[1], 100)
@@ -136,11 +217,9 @@ class MCNP_Distribution_histogram(MCNP_Distribution):
         plt.show()
 
 class MCNP_Distribution_discrete(MCNP_Distribution):
-    # def __init__(self, si: MCNP_SourceInformation, sp: MCNP_SourceInformation):
-    #     if len(si) - len(sp) != 0:
-    #         raise AttributeError("len(si) - len(sp) != 0")
-    #     else:
-    #         super().__init__(si, sp)
+    '''
+    mcnp离散分布
+    '''
 
     def plot(self):
         plt.bar(self.x(), self.y(), width=0.04)
@@ -149,6 +228,11 @@ class MCNP_Distribution_discrete(MCNP_Distribution):
         plt.show()
 
 def get_distribution_from_string(input:str) -> list[MCNP_Distribution]:
+    '''
+    将mcnp字符串转换为分布描述对象
+    :param input:
+    :return:
+    '''
     lines = input.split("\n")
     l_si = []
     l_sp = []
@@ -169,7 +253,7 @@ def get_distribution_from_string(input:str) -> list[MCNP_Distribution]:
                 if re.search(r'[\.e]', number_s,re.IGNORECASE):
                     si.data.append(float(number_s))
                 else:
-                    si.data.append(int(number_s))
+                     si.data.append(int(number_s))
             l_si.append(si)
         elif re.match(r"^sp\d+", line, re.IGNORECASE):
             s = line.split()
@@ -196,22 +280,23 @@ def get_distribution_from_string(input:str) -> list[MCNP_Distribution]:
                 l_distribution.append(MCNP_Distribution_discrete(si, sp))
     return l_distribution
 
-class MCNP_souceCards(object):
+class MCNP_SourceCards(object):
+    '''
+    mcnp 源描述卡
+    '''
     def __init__(self):
         self.mode = None
         self.imp = None
-        self.sdef = None
-        self.cells = []
+        self.sdef = MCNP_SourceDefinition()
+
+    def __setitem__(self, key, value):
+        self.sdef[key] = value
+
+    def __getitem__(self, item):
+        return self.sdef[item]
 
     def __str__(self):
-        _l = len(self.cells)
-        if _l == 2:
-            imp = '1 0'
-        elif _l > 2:
-            imp = '1 {:}r 0'.format(_l - 2)
-        else:
-            imp = ''
-        s = "mode {}\nimp:{} {}\n".format(self.mode, self.mode, imp)
+        s = "mode {}\nimp:{} {}\n".format(self.mode, self.mode, self.imp)
         s += str(self.sdef)
         return s
 
@@ -222,12 +307,17 @@ class MCNP_souceCards(object):
         self.cells.append(cell)
 
 class MCNP_tallyCards(object):
+    '''
+    mcnp 统计卡
+    '''
     def __init__(self):
         self.type = None
         self.particle = None
         self.detectors = []
         self.energyBin = []
-        self.cut_nps = np.power(2, 32)
+        self.cut_nps = np.iinfo(np.int32).max
+
+        self.tail = []
 
     def __str__(self):
         s = "f{}:{} ".format(self.type, self.particle)
@@ -237,18 +327,24 @@ class MCNP_tallyCards(object):
         ebin = list(map(str, self.energyBin))
         e = "e{} {}\n".format(self.type, " ".join(ebin))
         cut = "nps {:d}\n".format(self.cut_nps)
+        for t in self.tail:
+            cut += str(t)
         return s + e + cut
-
 
     def add_detector(self, detector):
         self.detectors.append(detector)
 
-def readSourceCardFromString(input:str):
+def readSourceCardFromString(input:str) ->MCNP_SourceCards:
+    '''
+    将mcnp输入文件中的源描述卡部分转换为python描述对象
+    :param input:
+    :return:
+    '''
     lines = input.split('\n')
     _mode = re.compile('^mode.*')
     _imp = re.compile('^imp.*')
     _sdef = re.compile('^sdef.*')
-    source = MCNP_souceCards()
+    source = MCNP_SourceCards()
     d = get_distribution_from_string(input)
     for line in lines:
         if _mode.match(line):
@@ -271,6 +367,40 @@ def readSourceCardFromString(input:str):
             s_def = MCNP_SourceDefinition(**arg)
             source.sdef = s_def
     return source
+
+class MCNP_wwgCard(object):
+    def __init__(self, parent:MCNP_tallyCards):
+        self.parent = parent
+        self.invokeCell = 0
+        self.weight_window = 0
+        self.energyOrTime = 0
+        self.meshArg = {}
+        self.splitArg = []
+
+    def __str__(self):
+        i_t = self.parent.type
+        i_c = self.invokeCell
+        w_g = self.weight_window
+        i_e = self.energyOrTime
+
+        wwg_s = f'wwg {i_t} {i_c} {w_g} J J J J {i_e}\n'
+
+        mesh_arg = []
+        for key, value in self.meshArg.items():
+            mesh_arg.append("{}={}".format(key, value))
+
+        mesh = "mesh " + " ".join(mesh_arg) + "\n"
+
+        if len(self.splitArg) == 6:
+            head = ['imesh', 'iints', 'jmesh', 'jints', 'kmesh', 'kints']
+            for i in range(6):
+                mesh += "     {} {}\n".format(head[i],self.splitArg[i])
+
+        return wwg_s + mesh
+
+
+
+
 
 
 
